@@ -32,17 +32,19 @@ export async function getRandomProduct() {
 
 // 添加产品
 export async function addProduct(product) {
-    const { seller_id, title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat = 0, is_listing_fee_paid = 0 } = product;
+    const { seller_id, title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat = 0 } = product;
+    // 生成 uuid (0x + 64位16进制随机字符串)
+    const uuid = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
     const [result] = await pool.query(
-        'INSERT INTO products (seller_id, title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat, is_listing_fee_paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [seller_id, title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat, is_listing_fee_paid]
+        'INSERT INTO products (uuid, seller_id, title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [uuid, seller_id, title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat]
     );
     return result.insertId;
 }
 
 // 更新产品
 export async function updateProduct(id, product) {
-    const { title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat, total_guess_time, winner_id, is_listing_fee_paid } = product;
+    const { title, img, product_desc, price, ticket_price, number_digits, difficulty_level, deadline, stat, total_guess_time, winner_id } = product;
     const updates = [];
     const values = [];
     
@@ -57,7 +59,6 @@ export async function updateProduct(id, product) {
     if (stat !== undefined) { updates.push('stat = ?'); values.push(stat); }
     if (total_guess_time !== undefined) { updates.push('total_guess_time = ?'); values.push(total_guess_time); }
     if (winner_id !== undefined) { updates.push('winner_id = ?'); values.push(winner_id); }
-    if (is_listing_fee_paid !== undefined) { updates.push('is_listing_fee_paid = ?'); values.push(is_listing_fee_paid); }
     
     if (updates.length === 0) return false;
     

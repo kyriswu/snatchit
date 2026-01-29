@@ -39,7 +39,7 @@
     "**/*.tsx",
     "next-env.d.ts",
     ".next/types/**/*.ts"
-  ],
+, "app/page.tsx.bak"  ],
   "exclude": [
     "node_modules"
   ]

@@ -24,6 +24,7 @@ IF NOT EXISTS (SELECT * FROM information_schema.tables
 
 CREATE TABLE products (
   id INT PRIMARY KEY AUTO_INCREMENT,
+  uuid CHAR(66) NOT NULL UNIQUE COMMENT 'hex编码的唯一标识',
   seller_id INT NOT NULL,
   title VARCHAR(255) NOT NULL,
   img VARCHAR(512) NOT NULL,
@@ -36,13 +37,12 @@ CREATE TABLE products (
   stat TINYINT NOT NULL DEFAULT 0 COMMENT '0:竞猜中, 1:已成交, 2:已下架, 3:流局',
   total_guess_time INT NOT NULL DEFAULT 0 COMMENT '累计竞猜次数',
   winner_id INT,
-  is_listing_fee_paid BOOLEAN NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   INDEX idx_seller_id (seller_id),
   INDEX idx_created_at (created_at)
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE guess_log (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -57,5 +57,5 @@ CREATE TABLE guess_log (
   INDEX idx_product_id (product_id),
   INDEX idx_user_id (user_id),
   INDEX idx_created_at (created_at)
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

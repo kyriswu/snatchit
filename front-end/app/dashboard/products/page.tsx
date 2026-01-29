@@ -1,13 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface Product {
+  id: number;
+  uuid: string;
+  seller_id: number;
+  title: string;              // 对应 name
+  img: string;                // 对应 image
+  product_desc: string;       // 对应 description
+  price: number;
+  ticket_price: number;       // 票价
+  number_digits: number;
+  difficulty_level: string | null;  // 对应 difficulty
+  deadline: string;
+  stat: number;               // 状态：0=活跃
+  total_guess_time: number;
+  winner_id: number | null;
+  is_listing_fee_paid: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export default function ProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [products, setProducts] = useState<Product[]>([]);
   const [formData, setFormData] = useState({
+    uuid: '',
     title: '',
     image: '',
     description: '',
@@ -15,6 +38,31 @@ export default function ProductsPage() {
     difficulty: 'easy',
     ticketPrice: '',
   });
+
+  // 页面加载时获取商品列表
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        const response = await fetch(`${apiBaseUrl}/getProductList`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ seller_id: 1 }),
+        });
+        if (!response.ok) {
+          throw new Error('获取商品列表失败');
+        }
+        const result = await response.json();
+        setProducts(result.data);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+      }
+    };
+    
+    fetchProducts();
+  }, []);
 
   // 验证表单数据
   const validateForm = (): boolean => {
@@ -48,8 +96,39 @@ export default function ProductsPage() {
     return true;
   };
 
+  const openAddModal = () => {
+    setIsEditMode(false);
+    setFormError('');
+    setFormSuccess('');
+    setFormData({
+      uuid: '',
+      title: '',
+      image: '',
+      description: '',
+      price: '',
+      difficulty: 'easy',
+      ticketPrice: '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (product: Product) => {
+    setIsEditMode(true);
+    setFormError('');
+    setFormSuccess('');
+    setFormData({
+      uuid: product.uuid ?? '',
+      title: product.title ?? '',
+      image: product.img ?? '',
+      description: product.product_desc ?? '',
+      price: product.price !== undefined ? String(product.price) : '',
+      difficulty: product.difficulty_level ?? 'easy',
+      ticketPrice: product.ticket_price !== undefined ? String(product.ticket_price) : '',
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
-    console.log('Submitting form data:', formData);
     e.preventDefault();
     
     // 校验表单
@@ -64,17 +143,28 @@ export default function ProductsPage() {
       // 准备请求数据
       const payload = {
         title: formData.title.trim(),
-        image: formData.image,
-        description: formData.description.trim(),
+        img: formData.image,
+        product_desc: formData.description.trim(),
         price: parseFloat(formData.price),
-        ticketPrice: parseFloat(formData.ticketPrice),
+        ticket_price: parseFloat(formData.ticketPrice),
         difficulty: formData.difficulty,
+
+        number_digits: 4,
+        deadline: '2026-01-01 00:00:00',
+        seller_id: 1,
       };
 
       console.log('Submitting product:', payload);
       
-      // 发起 POST 请求
-      const response = await fetch('http://localhost:4000/addProduct', {
+      // 根据模式选择不同的接口
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const endpoint = isEditMode ? '/updateProduct' : '/addProduct';
+      if (isEditMode) {
+        // 如果是编辑模式，添加商品ID到负载中
+        console.log("p", formData)
+        Object.assign(payload, { id: products.find(p => p.uuid === formData.uuid)?.id });
+      }
+      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,13 +180,47 @@ export default function ProductsPage() {
       const result = await response.json();
       
       // 成功处理
-      setFormSuccess('商品添加成功！');
-      console.log('Product added:', result);
+      if (isEditMode) {
+        setFormSuccess('商品保存成功！');
+        console.log('Product updated:', result);
+        // 更新列表中的商品
+        setProducts(products.map(p =>
+          p.id === result.id
+            ? { ...p, ...result.data, uuid: p.uuid || formData.uuid || result.data?.uuid || '' }
+            : p
+        )
+        );
+      } else {
+        setFormSuccess('商品添加成功！');
+        console.log('Product added:', result);
+        // Add the new product to the products array
+        const newProduct: Product = {
+        id: result.data?.id || products.length + 1,
+        uuid: formData.uuid || result.data.uuid,
+        seller_id: 1,
+        title: formData.title,
+        img: result.data?.img || result.img || formData.image,
+        product_desc: formData.description,
+        price: parseFloat(formData.price),
+        ticket_price: parseFloat(formData.ticketPrice),
+        number_digits: 4,
+        difficulty_level: formData.difficulty,
+        deadline: '2026-01-01T00:00:00Z',
+        stat: 0,
+        total_guess_time: 0,
+        winner_id: null,
+        is_listing_fee_paid: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+        setProducts([newProduct, ...products]);
+      }
       
       // 延迟关闭弹窗和清空表单
       setTimeout(() => {
         setIsModalOpen(false);
         setFormData({
+          uuid: '',
           title: '',
           image: '',
           description: '',
@@ -117,92 +241,9 @@ export default function ProductsPage() {
   };
 
   // Mock product data
-  const products = [
-    {
-      id: 1,
-      name: "高级护肤精华液",
-      category: "护肤品",
-      price: 298.00,
-      stock: 156,
-      status: "active",
-      image: "/api/placeholder/300/200",
-      sales: 1234
-    },
-    {
-      id: 2,
-      name: "天然有机面膜",
-      category: "面部护理",
-      price: 128.00,
-      stock: 89,
-      status: "active",
-      image: "/api/placeholder/300/200",
-      sales: 856
-    },
-    {
-      id: 3,
-      name: "保湿润肤霜",
-      category: "护肤品",
-      price: 189.00,
-      stock: 0,
-      status: "out_of_stock",
-      image: "/api/placeholder/300/200",
-      sales: 2145
-    },
-    {
-      id: 4,
-      name: "清洁洁面乳",
-      category: "清洁",
-      price: 98.00,
-      stock: 234,
-      status: "active",
-      image: "/api/placeholder/300/200",
-      sales: 3421
-    },
-    {
-      id: 5,
-      name: "抗皱眼霜",
-      category: "护肤品",
-      price: 368.00,
-      stock: 45,
-      status: "low_stock",
-      image: "/api/placeholder/300/200",
-      sales: 567
-    },
-    {
-      id: 6,
-      name: "温和卸妆水",
-      category: "清洁",
-      price: 88.00,
-      stock: 178,
-      status: "active",
-      image: "/api/placeholder/300/200",
-      sales: 1890
-    },
-    {
-      id: 7,
-      name: "修复精华套装",
-      category: "套装",
-      price: 588.00,
-      stock: 23,
-      status: "low_stock",
-      image: "/api/placeholder/300/200",
-      sales: 234
-    },
-    {
-      id: 8,
-      name: "美白淡斑霜",
-      category: "护肤品",
-      price: 258.00,
-      stock: 112,
-      status: "active",
-      image: "/api/placeholder/300/200",
-      sales: 789
-    }
-  ];
-
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: number) => {
     switch (status) {
-      case "active":
+      case 0:
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
             <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -211,22 +252,13 @@ export default function ProductsPage() {
             在售
           </span>
         );
-      case "out_of_stock":
+      case 1:
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
             <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
               <circle cx="10" cy="10" r="3" />
             </svg>
-            缺货
-          </span>
-        );
-      case "low_stock":
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
-            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <circle cx="10" cy="10" r="3" />
-            </svg>
-            库存低
+            已售
           </span>
         );
       default:
@@ -256,7 +288,7 @@ export default function ProductsPage() {
             筛选
           </button>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={openAddModal}
             className="inline-flex items-center px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors duration-200 cursor-pointer shadow-sm"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -290,7 +322,7 @@ export default function ProductsPage() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">在售商品</p>
               <p className="text-2xl font-bold text-text-dark dark:text-white mt-1">
-                {products.filter(p => p.status === 'active').length}
+                {products.filter(p => p.stat === 0).length}
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
@@ -306,7 +338,7 @@ export default function ProductsPage() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">库存预警</p>
               <p className="text-2xl font-bold text-text-dark dark:text-white mt-1">
-                {products.filter(p => p.status === 'low_stock' || p.status === 'out_of_stock').length}
+                {products.filter(p => p.stat === 0 || p.stat === 1).length}
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
@@ -322,7 +354,7 @@ export default function ProductsPage() {
             <div>
               <p className="text-sm text-gray-600 dark:text-gray-400">总销量</p>
               <p className="text-2xl font-bold text-text-dark dark:text-white mt-1">
-                {products.reduce((sum, p) => sum + p.sales, 0).toLocaleString()}
+                {products.reduce((sum, p) => sum + p.total_guess_time, 0).toLocaleString()}
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -337,28 +369,33 @@ export default function ProductsPage() {
       {/* Products Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {products.map((product) => (
-          <div
+            <div
             key={product.id}
             className="bg-white dark:bg-slate-800 rounded-lg overflow-hidden shadow-sm border border-gray-200 dark:border-slate-700 hover:shadow-lg transition-shadow duration-200 cursor-pointer group"
-          >
+            >
             {/* Product Image */}
             <div className="relative h-48 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/20 dark:to-pink-900/20 overflow-hidden">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <svg className="w-16 h-16 text-purple-300 dark:text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
+              <img
+              src={`${process.env.NEXT_PUBLIC_API_BASE_URL}${product.img}`}
+              alt={product.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+              onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              }}
+              />
               
               {/* Status Badge - Absolute positioned */}
               <div className="absolute top-3 left-3">
-                {getStatusBadge(product.status)}
+              {getStatusBadge(product.stat)}
               </div>
 
               {/* Quick Actions */}
               <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <button className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors duration-200">
+                <button 
+                  onClick={() => openEditModal(product)}
+                  className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors duration-200">
                   <svg className="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
                 </button>
                 <button className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors duration-200">
@@ -373,40 +410,40 @@ export default function ProductsPage() {
             <div className="p-4 space-y-3">
               {/* Category */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">
-                  {product.category}
-                </span>
+              <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                {product.difficulty_level || '未分类'}
+              </span>
               </div>
 
               {/* Product Name */}
               <h3 className="text-lg font-semibold text-text-dark dark:text-white line-clamp-1">
-                {product.name}
+              {product.title}
               </h3>
 
               {/* Price */}
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-primary">
-                  ¥{product.price.toFixed(2)}
-                </span>
+              <span className="text-2xl font-bold text-primary">
+                ¥{product.price.toFixed(2)}
+              </span>
               </div>
 
               {/* Stats */}
               <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-slate-700">
-                <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
-                  <span>库存: {product.stock}</span>
-                </div>
-                <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                  <span>销量: {product.sales}</span>
-                </div>
+              <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                <span>累计参与人数: {product.total_guess_time}</span>
+              </div>
+              {/* <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                <span>销量: {product.sales}</span>
+              </div> */}
               </div>
             </div>
-          </div>
+            </div>
         ))}
       </div>
 
@@ -435,10 +472,10 @@ export default function ProductsPage() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-text-dark dark:text-white">
-                      添加新商品
+                      {isEditMode ? '编辑商品' : '添加新商品'}
                     </h2>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                      填写商品基本信息
+                      {isEditMode ? '编辑商品基本信息' : '填写商品基本信息'}
                     </p>
                   </div>
                 </div>
@@ -540,7 +577,7 @@ export default function ProductsPage() {
                     {formData.image && (
                     <div className="mt-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg flex items-center justify-center">
                       <img
-                      src={formData.image}
+                      src={isEditMode && !formData.image.startsWith('data:') ? `${process.env.NEXT_PUBLIC_API_BASE_URL}${formData.image}` : formData.image}
                       alt="Preview"
                       className="max-w-full max-h-40 object-contain rounded"
                       onError={(e) => {
@@ -614,6 +651,7 @@ export default function ProductsPage() {
                       value={formData.price}
                       onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                       placeholder="0.00"
+                      disabled={isEditMode}
                       className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-colors duration-200"
                     />
                   </div>
@@ -637,6 +675,7 @@ export default function ProductsPage() {
                     value={formData.ticketPrice}
                     onChange={(e) => setFormData({ ...formData, ticketPrice: e.target.value })}
                     placeholder="0.00"
+                    disabled={isEditMode}
                     className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-colors duration-200"
                   />
                   </div>
@@ -761,7 +800,7 @@ export default function ProductsPage() {
                         提交中...
                       </>
                     ) : (
-                      '添加商品'
+                      isEditMode ? '保存商品' : '添加商品'
                     )}
                   </button>
                 </div>
