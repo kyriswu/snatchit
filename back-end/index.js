@@ -2,11 +2,10 @@ import 'dotenv/config';
 import express, { json } from 'express';
 import fs from 'fs';
 
-import { getProductById, getProductsBySellerId, getProductsByStatus, getRandomProduct, addProduct, updateProduct, deleteProduct } from './db/db_products.js';
-import { OAuth2Client } from 'google-auth-library';
+import { auth, OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
-import { sendTrx,createWallet,getBalance,getAccount,executePayment} from './wallet.js';
-import { loginOrRegister, getUserInfoBySocialPlatform, updateUserWalletAddress, approveContract } from './db/db_users.js';
+import { sendTrx,createWallet,getBalance,getAccount,executePayment,transferWithAuthorization,getEvents,executeBatchPayment,checkTxStatus} from './wallet.js';
+import { loginOrRegister, getUserInfoBySocialPlatform, updateUserWalletAddress, approveContract,getUserByWalletAddress } from './db/db_users.js';
 import { encryptPrivateKey, decryptPrivateKey } from './util.js';
 import {  
 createSpendingKey,
@@ -15,16 +14,20 @@ getSpendingKeyByAccessKey,
 getSpendingKeysByUserId,
 updateSpendingKey,
 deleteSpendingKey,
-updateBudgetUsage,
-updateStatus,
-resetBudget,
-incrementRateUsage,
-canPay,
-getKeysNeedingReset} from './db/db_spending_keys.js';
-import { authenticateToken } from './middleware.js'; // 导入中间件
+getPolicyByName} from './db/db_spending_keys.js';
+import {RiskEngine} from './risk-engine.js'
 
+import { authenticateToken } from './middleware.js'; // 导入中间件
+import { WebSocketServer } from 'ws';
+import http from 'http';
+import { v4 as uuidv4 } from 'uuid';
+import { createPaymentLog, getPaymentLogsByToAddress,getPaymentLogsByFromAddress } from './db/db_payment_logs.js';
+import redis from './redisClient.js';
+import { exec } from 'child_process';
 const app = express();
 const PORT = 4000;
+
+
 
 // 中间件示例：解析 JSON，增加请求体大小限制
 app.use(json({ limit: '50mb' }));
@@ -40,11 +43,39 @@ app.use((req, res, next) => {
   next();
 }); 
 
+// 请求日志中间件：打印每个请求的方法和路径
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 // 静态文件服务：提供 file 文件夹下的图片访问
 app.use('/file', express.static('file'));
 
+const server = http.createServer(app); // 需要用 http server 包裹 express
+const wss = new WebSocketServer({ server }); // 挂载 WS 到 HTTP server
+// 内存中存储 requestId -> WebSocket 的映射
+// 生产环境如果是多实例部署，需要用 Redis Pub/Sub 替代
+const pendingConnections = new Map();
+
+// 1. 处理 WebSocket 连接
+wss.on('connection', (ws, req) => {
+    // 解析 URL 参数 ?requestId=...
+    const urlParams = new URLSearchParams(req.url.split('?')[1]);
+    const requestId = urlParams.get('requestId');
+
+    if (requestId) {
+        console.log(`[WS] Client connected for request: ${requestId}`);
+        pendingConnections.set(requestId, ws);
+
+        ws.on('close', () => {
+            pendingConnections.delete(requestId);
+        });
+    }
+});
 // 路由
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
+    console.log(await getEvents('b9e81299bdabef41f5655effa3bade2697f1530b5142d9446becfdbdf4a8c56e'));
   res.send('Hello, Express!');
 });
 
@@ -66,7 +97,7 @@ app.post('/api/auth/google', async (req, res) => {
         process.env.GOOGLE_CLIENT_SECRET,
         process.env.GOOGLE_AUTH_CALLBACK_URL // 必须与 Google Console 配置完全一致
     );
-    console.log(client)
+    
     try {
         // 1. 用 Code 换取 Google 的 Tokens (包含 id_token, access_token)
         const { tokens } = await client.getToken(code);
@@ -262,18 +293,36 @@ app.post('/listKeys', authenticateToken, async (req, res) => {
     }
 });
 
+app.post('/delKeys', authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { id } = req.body;
 
+        if (!id) {
+            return res.status(400).json({ code: -1, error: 'Key id is required' });
+        }
 
-app.post('/test', async (req, res) => {
-    // sendTrx(process.env.PLATFORM_PK, "TELin7GWhGircd9NyNM3h7aewufzYbr7wb", 1).then((tx)=>{
-     try{   
+        const user = await getUserInfoBySocialPlatform('google', userId);
+        const key = await getSpendingKeyById(id);
 
-        const tx = await executePayment("TELin7GWhGircd9NyNM3h7aewufzYbr7wb", "TUzz9HKrE5sgzn5RmGKG35caEyqvawoKga", 1, "txid:001");
-    
+        if (!key) {
+            return res.status(404).json({ code: -1, error: 'Key not found' });
+        }
 
-        res.status(200).json({ code: 0, data: tx });
-    }catch(err){
-        res.status(500).json({ code: -1, error: err.message });
+        if (key.user_id !== user.id) {
+            return res.status(403).json({ code: -1, error: 'Unauthorized' });
+        }
+
+        const result = await deleteSpendingKey(id);
+
+        if (result) {
+            res.status(200).json({ code: 0, message: 'Key deleted successfully' });
+        } else {
+            res.status(500).json({ code: -1, error: 'Failed to delete key' });
+        }
+    } catch (error) {
+        console.error('delKeys error:', error);
+        res.status(500).json({ code: -1, error: error.message });
     }
 });
 
@@ -284,7 +333,7 @@ app.post('/getWalletInfo', authenticateToken, async (req, res) => {
         
         
         const user = await getUserInfoBySocialPlatform('google', userId)
-        console.log(user)
+ 
         const balance = await getBalance(user.wallet_address);
         const account = await getAccount(user.wallet_address);
         res.status(200).json({ code: 0, data: { balance, account, address: user.wallet_address, is_approved: user.is_approved } });
@@ -294,9 +343,211 @@ app.post('/getWalletInfo', authenticateToken, async (req, res) => {
     }
 });
 
+app.post('/createPaymentLog', async (req, res) => {
+    try {
+        const { requestId, accessKey, fromAddress, toAddress, amount, status, txHash, errorMessage } = req.body;
+
+        if (!requestId || !accessKey || !fromAddress || !toAddress || amount === undefined) {
+            return res.status(400).json({ code: -1, error: 'Missing required fields' });
+        }
+
+
+        
+        const logData = {
+            user_id: user.id,
+            request_id: requestId,
+            from_address: fromAddress,
+            to_address: toAddress,
+            amount,
+            status: status || 'PENDING',
+            tx_hash: txHash || null,
+            error_message: errorMessage || null,
+            created_at: new Date()
+        };
+
+        const result = await createPaymentLog(logData);
+        res.status(201).json({ code: 0, data: result });
+    } catch (error) {
+        console.error('createPaymentLog error:', error);
+        res.status(500).json({ code: -1, error: error.message });
+    }
+});
+
+app.post('/listPaymentLogs', authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { page = 1, pageSize = 8 } = req.body;
+
+        const user = await getUserInfoBySocialPlatform('google', userId);
+        
+        const offset = (page - 1) * pageSize;
+        const logs = await getPaymentLogsByFromAddress(user.wallet_address, { limit: pageSize, offset });
+
+        res.status(200).json({ code: 0, data: logs.data, total: logs.total, page, pageSize });
+    } catch (error) {
+        console.error('listPaymentLogs error:', error);
+        res.status(500).json({ code: -1, error: error.message });
+    }
+});
+
+// /verify endpoint: 检查签名有效性
+app.post('/verify', async (req, res) => {
+  try {
+
+    const riskEngine  = new RiskEngine();
+    const { from, to, value, signature, message } = req.body;
+
+    const isValid =  riskEngine.makeDecision();
+
+    res.json({ isValid: true });
+  } catch (error) {
+    console.error('[/verify] ✗ Error:', error.message);
+    res.status(400).json({ isValid: false, error: error.message });
+  }
+});
+
+// /settle endpoint: 广播转移 tx
+app.post('/settle', async (req, res) => {
+  try {
+
+
+    const { authorization, signature } = req.body;
+
+    authorization.orderid = 'orderid' + authorization.nonce;
+    
+    // 将支付请求加入 Redis 列表，等待后台批量处理  
+    await redis.rpush(
+        "batch:payments",
+        JSON.stringify(authorization)
+    );
+
+
+    res.json({ success: true});
+  } catch (error) {
+    console.log('[/settle] ✗ Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+setInterval(async () => {
+  const orders = await redis.lrange("batch:payments", 0, -1);
+
+  if (!orders.length) return;
+
+  // 清空队列
+  await redis.del("batch:payments");
+
+  const parsed = orders.map(o => JSON.parse(o));
+
+  const payers = [];
+  const recipients = [];
+  const amounts = [];
+  const orderIds = [];
+
+  for (const authorization of parsed) {
+    payers.push(authorization.from);
+    recipients.push(authorization.to);
+    amounts.push(authorization.value);
+    orderIds.push(authorization.orderid    ); // 或你真实 orderId
+  }
+
+  const txid = await executeBatchPayment(payers, recipients, amounts, orderIds);
+  //轮询交易状态    
+  checkTxStatus(txid);
+
+}, 1000);
+
+app.post('/check-risk', async (req, res) => {
+    try {
+        const { from, to, value, policy, ...otherData } = req.body;
+
+        if (!from || !to || value === undefined) {
+            return res.status(400).json({ code: -1, error: 'Missing required fields: from, to, value' });
+        }
+
+        const requestId = uuidv4();
+        const user = await getUserByWalletAddress(from);
+        const policyData = await getPolicyByName(user.id, policy);
+
+        const riskEngine  = new RiskEngine();
+        const decision = riskEngine.makeDecision(policyData, req.body);
+        console.log('Risk decision:', decision);
+
+
+        // 风控检查逻辑
+        const riskAssessment = {
+            from,
+            to,
+            value,
+            policy: policy || 'DEFAULT',
+            timestamp: Date.now(),
+            allowed: decision.allowed,
+            reason: decision.reason,
+            status: decision.status,
+            requestId: requestId
+        };
+
+        await createPaymentLog({
+            from_address: from,
+            to_address: to,
+            amount: value,
+            status: riskAssessment.status,
+            trace_id : requestId,
+            request_id: requestId,
+        invoice_id: otherData.invoiceId, //string
+        x402_version : 1,
+        service_component : 'facilitator',
+        amount_atomic:0.000001,
+        amount_display : value / 1_000_000,
+        asset_symbol : 'USDT',
+        asset_contract : 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf', // Nile测试链 USDT TRC20 合约地址
+        network : otherData.network,
+        order_type : 'standard',
+        risk_policy : policy,
+        risk_decision : riskAssessment.status,
+        risk_reason : riskAssessment.reason,
+        latency_ms : 0,
+        latency_chain_ms : 0,
+        user_agent : '',
+        extra_meta : null,
+        batch_id : null,
+        batch_index : 0,
+        is_aggregated : 0
+        });
+
+        res.status(200).json({ success: riskAssessment.allowed, data: riskAssessment });
+    } catch (error) {
+        console.error('check-risk error:', error);
+        res.status(500).json({ code: -1, error: error.message });
+    }
+});
+
+app.post('/pendingApprove', async (req, res) => {
+    try {
+        const { requestId } = req.body;
+
+        if (!requestId) {
+            return res.status(400).json({ code: -1, error: 'requestId is required' });
+        }
+
+        const ws = pendingConnections.get(requestId);
+
+        if (!ws) {
+            return res.status(404).json({ code: -1, error: 'No pending connection found for this requestId' });
+        }
+
+        ws.send(JSON.stringify({ status: 'approved', requestId }));
+        res.status(200).json({ code: 0, message: 'Approval message sent' });
+    } catch (error) {
+        console.error('pendingApprove error:', error);
+        res.status(500).json({ code: -1, error: error.message });
+    }
+});
+
+
 
 
 // 启动服务器
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
+server.listen(PORT, () => {
+    console.log(`Server is running at http://localhost:${PORT}`);
 });

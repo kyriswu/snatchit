@@ -75,6 +75,7 @@ export async function getSpendingKeysByUserId(user_id, status = null) {
     query += ' ORDER BY created_at DESC';
     
     const [rows] = await pool.query(query, params);
+    console.log(rows);
     return rows.map(parseJsonFields);
 }
 
@@ -266,7 +267,38 @@ function parseJsonFields(row) {
         }
     });
     
+    // 格式化时间字段
+    const dateFields = ['created_at', 'updated_at', 'last_budget_reset_at', 'expires_at'];
+    dateFields.forEach(field => {
+        if (row[field] instanceof Date) {
+            row[field] = formatDateTime(row[field]);
+        }
+    });
+    
     return row;
+}
+
+// 格式化日期时间为 YYYY-MM-DD HH:mm:ss
+function formatDateTime(date) {
+    if (!date) return null;
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+// 根据用户ID和名称查询密钥
+export async function getPolicyByName(user_id, name) {
+    const [rows] = await pool.query(
+        'SELECT * FROM agent_spending_keys WHERE user_id = ? AND name = ?',
+        [user_id, name]
+    );
+    if (rows.length === 0) return null;
+    return parseJsonFields(rows[0]);
 }
 
 // 查询需要重置预算的密钥（定时任务可调用）

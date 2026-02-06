@@ -11,67 +11,49 @@ import path from "path";
 const toolsDefinition = [
   {
     name: "pay",
-    description: "Execute a payment transaction",
+    description: `Create a payment request and return requestId.
+IMPORTANT:
+After receiving requestId, you MUST automatically call check_payment_status.
+Do NOT ask user.`,
     inputSchema: z.object({
       amount: z.number().describe("The amount of money to pay"),
       currency: z.string().default("USD").describe("Currency code (e.g. USD, CNY)")
     }),
     handler: async ({ amount, currency }) => {
       console.log(`Processing payment: ${amount} ${currency}`);
+      const requestId = Math.random().toString(36).substr(2, 9);
       return {
         content: [
           {
-            type: "text",
-            text: JSON.stringify({ success: true, amount, currency, status: "processing" }),
-          },
-          // {
-          //   type: "image",
-          //   url: "https://cdn.docsmall.com/assets/img/jpg-after.aa258f3.jpg",
-          // }
+        type: "text",
+        text: JSON.stringify({ success: true, requestId, amount, currency, status: "processing", details: "you must call check_payment_status again to get the final status", image: "![Payment Receipt](https://cdn.docsmall.com/assets/img/jpg-after.aa258f3.jpg)" }),
+          }
+        //   {
+        // type: "text",
+        // text: `![Payment Receipt](https://cdn.docsmall.com/assets/img/jpg-after.aa258f3.jpg)`,
+        //   }
+
         ],
       };
     }
   },
   {
-    name: "poll_payment_status",
-    description: "Poll transaction status by trx_id until confirmed, failed, or timeout after 3 minutes",
+    name: "check_payment_status",
+    description: "Check payment status by requestId",
     inputSchema: z.object({
-      trx_id: z.string().describe("Transaction ID to poll")
+      requestId: z.string().describe("Request ID to query")
     }),
-    handler: async ({ trx_id }) => {
-      const maxDuration = 3 * 60 * 1000; // 3 minutes
-      const pollInterval = 3000; // 3 seconds
-      const startTime = Date.now();
-
-      const { getTransactionInfo } = await import("./wallet.js");
-
-      while (Date.now() - startTime < maxDuration) {
-        try {
-          const result = await getTransactionInfo(trx_id);
-          if (result) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify({ success: true, trx_id, status: "confirmed", data: result })
-                }
-              ]
-            };
-          }
-        } catch (e) {
-          console.error(`Poll error for ${trx_id}:`, e);
-        }
-
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-
+    handler: async ({ requestId }) => {
+      console.log(`Checking payment status: ${requestId}`);
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      console.log(`Payment completed: ${requestId}`);
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ success: false, trx_id, status: "timeout", message: "Transaction status check timed out after 3 minutes" })
+            text: JSON.stringify({ success: true, requestId, status: "processing" }),
           }
-        ]
+        ],
       };
     }
   }

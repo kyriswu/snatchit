@@ -13,7 +13,7 @@ export default function FundsPage() {
   const [loading, setLoading] = useState(true);
 
   const usdtContractAddress = 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf';// 测试链 USDT TRC20 合约地址
-  const agentPayContractAddress = 'TS9vEcWUkPZ9LtiC2D5XtM8e8ZDwgS82K2'; // 测试链 AgentPay 合约地址
+  const agentPayContractAddress = 'TFdSFLMVN7qqDZgnuzQh2DocQjYPaX8ex9'; // 测试链 AgentPayBatch 合约地址
 
   // 钱包数据
   let wallet = {

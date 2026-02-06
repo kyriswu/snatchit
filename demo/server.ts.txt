@@ -1,0 +1,56 @@
+import express from 'express';
+import { ExactTronScheme } from "@t402/tron/exact/server";
+import { paymentMiddleware, t402ResourceServer } from "@t402/express";
+import { HTTPFacilitatorClient } from "@t402/core/server";
+
+const app = express();
+
+// Log payment headers for debugging
+app.use((req, res, next) => {
+  const paymentHeader = req.headers["payment-signature"] || req.headers["x-payment"];
+  console.log("Incoming payment header:", paymentHeader ? "present" : "missing");
+  
+  // Intercept response to see final status code
+  const originalJson = res.json.bind(res);
+  res.json = function(data) {
+    console.log(`[Response] Status: ${res.statusCode}, Body:`, JSON.stringify(data).substring(0, 200));
+    return originalJson(data);
+  };
+  
+  next();
+});
+
+// 1. 配置自定义 Facilitator 客户端，指向 http://localhost:4000
+const facilitator = new HTTPFacilitatorClient({ 
+  url: "http://localhost:4000" 
+});
+
+// 2. 初始化资源服务器并注册 TRON 网络 (支持主网或测试网)
+const resourceServer = new t402ResourceServer(facilitator)
+  .register("tron:nile", new ExactTronScheme());
+
+// 3. 应用 T402 中间件
+// 该中间件会自动拦截请求并返回 402 Payment Required
+console.log('[Server] Registering paymentMiddleware...');
+app.use(paymentMiddleware({
+  "GET /premium-content": {
+    accepts: {
+      scheme: "exact",
+      price: "$0.001",
+      network: "tron:nile",
+      payTo: "TUzz9HKrE5sgzn5RmGKG35caEyqvawoKga"
+    },
+    description: "Premium content"
+  }
+}, resourceServer));
+
+// 4. 定义受保护的资源
+app.get('/premium-content', (req, res) => {
+  // 如果请求到达这里，说明支付验证已通过
+  console.log('[Resource Handler] ✓ Reached premium content handler!');
+  res.json({ data: "这是付费后可见的 TRON 专属内容！" });
+});
+
+app.listen(4021, () => {
+  console.log('Resource Server running at http://localhost:4021');
+});

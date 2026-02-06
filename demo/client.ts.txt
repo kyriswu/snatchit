@@ -1,0 +1,79 @@
+import { t402Client, wrapFetchWithPayment } from "@t402/fetch";
+import { registerExactTronScheme } from "@t402/tron/exact/client";
+import type { ClientTronSigner } from "@t402/tron";
+import TronWeb from "tronweb";
+import { sign } from "node:crypto";
+ 
+// Create t402 client
+const client = new t402Client();
+ 
+// Register TRON payment mechanism
+const privateKey = "9003554eb0c8945383e8b1e650be96c39a29e79270c3ce0d387893bf30e1b55b";
+const tronWeb = new TronWeb({
+  fullHost: "https://api.nileex.io",
+});
+tronWeb.setPrivateKey(privateKey.replace("0x", ""));
+
+const tronSigner: ClientTronSigner = {
+  address: tronWeb.address.fromPrivateKey(privateKey.replace("0x", "")),
+
+  async signTransaction(params) {
+    const contractTx = await tronWeb.transactionBuilder.triggerSmartContract(
+      params.contractAddress,
+      "transfer(address,uint256)",
+      { feeLimit: params.feeLimit || 100_000_000, callValue: 0 },
+      [
+        { type: "address", value: params.to },
+        { type: "uint256", value: params.amount },
+      ],
+      this.address
+    );
+
+    if (!contractTx.result?.result) {
+      throw new Error("Failed to build transaction");
+    }
+
+    const signedTxn = await tronWeb.trx.sign(contractTx.transaction);
+
+    const pb = await tronWeb.utils.transaction.txJsonToPb(  signedTxn);
+const hexString = Buffer.from(pb.serializeBinary()).toString('hex');
+// 这个 hexString 才是 sendHexTransaction 能接收的参数
+console.log("Signed transaction hex:", hexString);
+    // return signedTxn.raw_data_hex || signedTxn.hex;
+      return hexString
+  },
+
+  async getBlockInfo() {
+    const block = await tronWeb.trx.getCurrentBlock();
+    const blockHash = block.blockID;
+    return {
+      refBlockBytes: blockHash.substring(0, 8),
+      refBlockHash: blockHash.substring(8, 16),
+      expiration: Date.now() + 3600000,
+    };
+  },
+};
+
+registerExactTronScheme(client, {
+  signer: tronSigner,
+});
+ 
+// Wrap fetch for automatic payment handling
+const debugFetch: typeof fetch = async (input, init) => {
+  console.log("Fetch init:", init);
+  return fetch(input, init);
+};
+const fetchWithPayment = wrapFetchWithPayment(debugFetch, client);
+ 
+// Make request - 402 payments handled automatically
+const response = await fetchWithPayment("http://localhost:4021/premium-content", {
+  method: "GET",
+});
+const responseText = await response.text();
+console.log("Response text:", responseText);
+try {
+  const data = responseText ? JSON.parse(responseText) : null;
+  console.log("Response data:", data);
+} catch (error) {
+  console.log("Response data (non-JSON)");
+}

@@ -30,7 +30,7 @@ const menuItems = [
   },
   {
     id: 'authenticate',
-    label: '授权管理',
+    label: '风控策略',
     icon: Users,
     href: '/dashboard/authenticate',
   },
@@ -39,6 +39,12 @@ const menuItems = [
     label: '资金管理',
     icon: FileText,
     href: '/dashboard/funds',
+  },
+  {
+    id: 'transactions',
+    label: '交易明细',
+    icon: Settings,
+    href: '/dashboard/transactions',
   },
   {
     id: 'notifications',
@@ -52,12 +58,7 @@ const menuItems = [
     icon: Settings,
     href: '/dashboard/settings',
   },
-  {
-    id: 'products',
-    label: '商品管理',
-    icon: Settings,
-    href: '/dashboard/products',
-  },
+  
 ];
 
 export default function Sidebar() {
