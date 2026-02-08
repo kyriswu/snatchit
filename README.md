@@ -118,5 +118,9 @@ const response = await agent.get(SERVER_URL);// 请求的接口地址
 ![System Architecture](./system.png)
 
 ![x402](./x402.png)
-
+以上红色部分，是基于标准x402协议，新增的环节，1️⃣风控验证 2️⃣交易聚合
+风控验证：基于配置的策略，判断交易是否可放行
+交易聚合流程图如下⬇️
 ![highfrequency](./highfrequency.png)
+
+![staking](./staking.png)
