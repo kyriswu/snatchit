@@ -3,6 +3,9 @@
 <h1 align="center">TFx402</h1>
 
 <p align="center">
+<strong>Gasless</strong> • <strong>Secure</strong> • <strong>Profit</strong>
+</p>
+
   基于 Tron 的 AI Agent 智能 facilitator，支持 x402 协议，主打低手续费转账、严格资金安全管控与可靠实时处理。
 </p>
 
