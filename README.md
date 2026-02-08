@@ -114,7 +114,5 @@ const response = await agent.get(SERVER_URL);// 请求的接口地址
 ```
 
 ## 技术架构
-```markdown
 ![System Architecture](./system.png)
-```
 
