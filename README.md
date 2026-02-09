@@ -16,10 +16,17 @@
 
 ## 演示视频
 
-<video width="100%" controls>
-    <source src="./jieshao.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-</video>
+
+[![演示视频](https://img.shields.io/badge/Demo-Video-blue)](./jieshao.mp4)
+
+[查看演示视频](./jieshao.mp4)
+
+GitHub 不直接渲染 HTML `<video>` 标签。建议使用：
+1. **Markdown 链接** - 简单直接
+2. **YouTube 嵌入** - 如果已上传视频
+3. **徽章链接** - 提供下载按钮
+4. **GIF 预览** - 转换为 GIF 格式
+
 
 ## 技术栈
 
