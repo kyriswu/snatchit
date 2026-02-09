@@ -14,6 +14,13 @@
   基于 Tron 的 AI Agent 智能 facilitator，支持 x402 协议，主打低手续费转账、严格资金安全管控与可靠实时处理。
 </p>
 
+## 演示视频
+
+<video width="100%" controls>
+    <source src="./jieshao.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+</video>
+
 ## 技术栈
 
 - 前端：Next.js 15，React 18，TypeScript，Tailwind CSS，PostCSS
