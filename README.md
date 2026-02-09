@@ -47,7 +47,7 @@
 | 协议支持 | - | x402 | x402 |
 | 闲置资金收益 | 无 | 无 | 3%-5% 年化质押增益 |
 | 交易验证 | 单笔验证 | 单笔验证 | 链上批量模拟验证 |
-| 链上交易参考 |  | 基础统计 | [transcan数据](https://nile.tronscan.org/#/transaction/512823e2172d50903999c5b9902866076084af2237bdafab227f200d1902c2d4) |
+| 链上交易参考 |  | 基础统计 | [transcan数据参考](https://nile.tronscan.org/#/transaction/512823e2172d50903999c5b9902866076084af2237bdafab227f200d1902c2d4) |
 ## 快速开始
 
 ### 前端
