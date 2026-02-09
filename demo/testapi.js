@@ -22,7 +22,6 @@ const agent = new PaymentAgent({
     policyName: 'AutoGPT-shopping', // 比如：基础用户策略、VIP策略、测试策略
     maxBudget: 5000000,
     network: 'nile', // 或 'nile' 测试网
-    facilitatorUrl: 'xxxxxx', // Facilitator 服务地址
 });
 
 console.log(`Agent Address: ${agent.myAddress}`);
@@ -67,11 +66,11 @@ async function runTest() {
 }
 
 // 运行
-// 并发调用 100 次 runTest
+// 并发调用 50 次 runTest
 async function runConcurrentTests() {
-    const tasks = Array.from({ length: 3 }, () => runTest());
+    const tasks = Array.from({ length: 30 }, () => runTest());
     await Promise.all(tasks);
-    console.log('✅ 100 tests completed.');
+    console.log('✅ 50 tests completed.');
 }
 
 runConcurrentTests();

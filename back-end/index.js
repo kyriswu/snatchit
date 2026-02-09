@@ -544,7 +544,7 @@ setInterval(async () => {
   checkTxStatus(txid);
   
 
-}, 1000);
+}, 5000);
 
 app.post('/check-risk', async (req, res) => {
     try {

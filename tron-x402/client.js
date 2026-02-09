@@ -101,6 +101,7 @@ class PaymentAgent {
             const riskResponse = await this.facilitatorClient.checkRisk(riskCheckPayload);
             
             if (!riskResponse.success) {
+                console.log(riskResponse)
                 throw new Error(`Risk check failed: ${riskResponse.data.reason}`);
             }
         
